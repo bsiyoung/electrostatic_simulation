@@ -1,0 +1,25 @@
+{
+  "line1": {
+    "from": {"x": -2, "y": 2.5},
+    "to": {"x": 8, "y": 2.5},
+    "charge_density": 1e-10
+  },
+
+  "line2": {
+    "from": {"x": -2, "y": -2.5},
+    "to": {"x": 8, "y": -2.5},
+    "charge_density": -1e-10
+  },
+
+  "line3": {
+    "from": {"x": -7, "y": 5},
+    "to": {"x": -7, "y": -5},
+    "charge_density": 1e-10
+  },
+
+  "line4": {
+    "from": {"x": -13, "y": 5},
+    "to": {"x": -13, "y": -5},
+    "charge_density": -1e-10
+  }
+}
