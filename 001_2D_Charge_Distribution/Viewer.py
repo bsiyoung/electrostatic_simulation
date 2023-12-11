@@ -1,28 +1,38 @@
+from __future__ import annotations
+
+import time
+from typing import TYPE_CHECKING
+from typing import List
+
 import tkinter as tk
 import pyglet
 
 import numpy as np
 
+if TYPE_CHECKING:
+    from DrawManager import DrawManager, DrawRect
+
 
 class Viewer:
-    def __init__(self, title, width, height):
-        # Load font file
-        if not pyglet.font.have_font('D2Coding'):
-            pyglet.font.add_file('../fonts/D2Coding-Ver1.3.2-20180524.ttf')
+    def __init__(self, title: str, width: int, height: int, draw_mgr: DrawManager,
+                 exit_flag: List[bool]):
+        self.draw_mgr = draw_mgr
 
-        # Initialize
-        self.wnd_w = width
-        self.wnd_h = height
+        self.wnd_w: int = width
+        self.wnd_h: int = height
+        self.exit_flag: List[bool] = exit_flag
 
+        self.root: tk.Tk = tk.Tk()
         self.__init_main_window(title)
+
+        self.canvas: tk.Canvas = tk.Canvas(self.root, width=self.wnd_w, height=self.wnd_h, bg='white')
+        self.pixels: np.ndarray | None = None
         self.__init_canvas()
+
         self.__init_default_configs()
 
-        # Pixel value info
-        self.pixel_value = []
-
-        # Initialization
-        self.reset_pixel_values()
+        # Initial draw
+        self.last_redraw_time: float = 0
         self.redraw_canvas()
 
     def __init_default_configs(self):
@@ -32,6 +42,8 @@ class Viewer:
         self.max_mpp = 1
         self.drag_prev_pos = [None, None]
         self.zoom_speed = 1.2  # scroll speed
+
+        self.refresh_rate = 100  # ms
 
         self.axis_conf = {
             'main': {
@@ -61,10 +73,12 @@ class Viewer:
             }
         }
 
+    # Window initialization & binding
+    # ==================================================================================================================
     def __init_main_window(self, title):
-        self.root = tk.Tk()
         self.root.title(title)
         self.root.geometry('{}x{}'.format(self.wnd_w, self.wnd_h))
+        self.root.protocol('WM_DELETE_WINDOW', self.__on_destroy)
         self.root.bind('<Configure>', self.__window_resize)
 
     def __window_resize(self, event):
@@ -77,18 +91,46 @@ class Viewer:
 
         self.wnd_w = new_width
         self.wnd_h = new_height
-
         self.canvas.configure(width=new_width, height=new_height)
-        self.reset_pixel_values()
 
         self.redraw_canvas()
 
-    # Canvas initialization & bindings
+    def __on_destroy(self):
+        self.exit_flag[0] = True
+        self.root.destroy()
+
+    # Canvas initialization & binding
     # ==================================================================================================================
     def __init_canvas(self):
-        self.canvas = tk.Canvas(self.root, width=self.wnd_w, height=self.wnd_h, bg='white')
+        # Load font
+        if not pyglet.font.have_font('D2Coding'):
+            pyglet.font.add_file('../fonts/D2Coding-Ver1.3.2-20180524.ttf')
+
         self.__canvas_bind_funcs()
+        self.__reset_pixels()
         self.canvas.pack()
+
+    def __reset_pixels(self):
+        if self.pixels is not None:
+            shape = self.pixels.shape
+
+            # Return if canvas size is not changed
+            if shape[0] == self.wnd_h and shape[1] == self.wnd_w:
+                return
+
+            # Delete current pixel objects from canvas
+            for row in range(shape[0]):
+                for col in range(shape[1]):
+                    self.canvas.delete(self.pixels[row][col])
+            del self.pixels
+
+        # Create new pixels
+        self.pixels = np.zeros((self.wnd_h, self.wnd_w), dtype=int)
+        for row in range(self.wnd_h):
+            for col in range(self.wnd_w):
+                self.pixels[row][col] = self.canvas.create_rectangle(row, row + 1, col, col + 1,
+                                                                     fill='#000000', width=1)
+                print(row, col)
 
     def __canvas_bind_funcs(self):
         self.canvas.bind('<MouseWheel>', self.__mouse_scroll)
@@ -134,20 +176,19 @@ class Viewer:
         self.wnd_cntr_pos[1] += dy * self.mpp
 
         self.drag_prev_pos = [event.x, event.y]
-
         self.redraw_canvas()
 
     def __left_mouse_up(self, event):
         self.drag_prev_pos = [None, None]
-
-    def reset_pixel_values(self):
-        self.pixel_value = np.empty((self.wnd_h, self.wnd_w), dtype=np.float32)
+        self.redraw_canvas()
 
     def redraw_canvas(self):
-        self.canvas.delete('all')
+        curr_time = time.time() * 1000  # in ms
+        if curr_time - self.last_redraw_time < self.refresh_rate:
+            return
 
-        grid_size = self.axis_conf['grid']['size']
-        self.draw_axes(grid_size)
+        self.last_redraw_time = curr_time
+        self.draw_mgr.draw_all()
 
     # Draw axes
     # ==================================================================================================================
@@ -328,6 +369,39 @@ class Viewer:
         return phy_y
 
     # ==================================================================================================================
+    def draw_loop(self):
+        q: List[DrawRect] = self.draw_mgr.draw_queue
 
-    def run_mainloop(self):
+        # Check is there any new data to draw
+        if len(q) == 0:
+            self.root.after(self.refresh_rate, self.draw_loop)
+            return
+
+        # Draw data in queue and axis(and grid)
+        while len(q) != 0:
+            r = q.pop(0)
+            break
+            target_pixels = self.pixels[r.scr_rect[0]:r.scr_rect[1], r.scr_rect[2]:r.scr_rect[3]]
+            target_shape = target_pixels.shape
+            for row in range(target_shape[1]):
+                for col in range(target_shape[0]):
+                    self.canvas.itemconfigure(target_pixels[row][col], fill=r.color)
+
+        grid_size = self.axis_conf['grid']['size']
+        self.draw_axes(grid_size)
+
+        # Run timer
+        self.root.after(self.refresh_rate, self.draw_loop)
+
+    def get_pixel_boundary(self):
+        return 0, 0, self.wnd_w, self.wnd_h
+
+    def get_physical_boundary(self):
+        left, top = self.screen_pos_to_physical_pos(0, 0)
+        right, bottom = self.screen_pos_to_physical_pos(self.wnd_w, self.wnd_h)
+
+        return left, top, right, bottom
+
+    def run_gui(self):
+        # self.root.after(0, self.draw_loop)
         self.root.mainloop()

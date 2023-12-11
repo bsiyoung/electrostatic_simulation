@@ -1,6 +1,10 @@
 import numpy as np
 
 
+pi = np.pi
+eps = 8e-12
+
+
 class LineChargeDist:
     def __init__(self, x1, y1, x2, y2, density):
         self.p1 = None
