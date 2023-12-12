@@ -1,39 +1,46 @@
 from __future__ import annotations
-
-import time
 from typing import TYPE_CHECKING
 from typing import List
 
+import time
+
 import tkinter as tk
 import pyglet
-
 import numpy as np
+from PIL import Image, ImageTk
+
+from CalcManager import CalcJob
 
 if TYPE_CHECKING:
     from DrawManager import DrawManager, DrawRect
+    from CalcManager import CalcManager
 
 
 class Viewer:
-    def __init__(self, title: str, width: int, height: int, draw_mgr: DrawManager,
+    def __init__(self, title: str, width: int, height: int,
+                 draw_mgr: DrawManager, calc_mgr: CalcManager,
                  exit_flag: List[bool]):
-        self.draw_mgr = draw_mgr
+        self.exit_flag: List[bool] = exit_flag
+        self.draw_mgr: DrawManager = draw_mgr
+        self.calc_mgr: CalcManager = calc_mgr
 
         self.wnd_w: int = width
         self.wnd_h: int = height
-        self.exit_flag: List[bool] = exit_flag
 
         self.root: tk.Tk = tk.Tk()
         self.__init_main_window(title)
 
-        self.canvas: tk.Canvas = tk.Canvas(self.root, width=self.wnd_w, height=self.wnd_h, bg='white')
-        self.pixels: np.ndarray | None = None
+        self.canvas: tk.Canvas = tk.Canvas(self.root, width=width, height=height, bg='white')
+        self.data: np.ndarray = np.zeros((height, width, 3), dtype=np.uint8)
+        self.data_img_obj: ImageTk.PhotoImage = ImageTk.PhotoImage(image=Image.fromarray(self.data))
+        self.data_img_id: int | None = None
         self.__init_canvas()
 
         self.__init_default_configs()
 
-        # Initial draw
-        self.last_redraw_time: float = 0
-        self.redraw_canvas()
+        px1, py1 = self.screen_pos_to_physical_pos(100, 100)
+        px2, py2 = self.screen_pos_to_physical_pos(800, 700)
+        self.calc_mgr.calc_queue.append(CalcJob((100, 100, 800, 700), (px1, py1, px2, py2), 0))
 
     def __init_default_configs(self):
         self.wnd_cntr_pos = [0, 0]  # physical position of window center
@@ -43,7 +50,7 @@ class Viewer:
         self.drag_prev_pos = [None, None]
         self.zoom_speed = 1.2  # scroll speed
 
-        self.refresh_rate = 100  # ms
+        self.max_refresh_rate = 10  # ms
 
         self.axis_conf = {
             'main': {
@@ -73,6 +80,9 @@ class Viewer:
             }
         }
 
+    def __clear_data(self):
+        self.data.fill(255)
+
     # Window initialization & binding
     # ==================================================================================================================
     def __init_main_window(self, title):
@@ -93,7 +103,7 @@ class Viewer:
         self.wnd_h = new_height
         self.canvas.configure(width=new_width, height=new_height)
 
-        self.redraw_canvas()
+        self.__update_data_size()
 
     def __on_destroy(self):
         self.exit_flag[0] = True
@@ -106,31 +116,50 @@ class Viewer:
         if not pyglet.font.have_font('D2Coding'):
             pyglet.font.add_file('../fonts/D2Coding-Ver1.3.2-20180524.ttf')
 
+        self.__init_data_image()
         self.__canvas_bind_funcs()
-        self.__reset_pixels()
         self.canvas.pack()
 
-    def __reset_pixels(self):
-        if self.pixels is not None:
-            shape = self.pixels.shape
+    def __update_data_size(self):
+        shape = self.data.shape
 
-            # Return if canvas size is not changed
-            if shape[0] == self.wnd_h and shape[1] == self.wnd_w:
-                return
+        if shape[0] == self.wnd_h and shape[1] == self.wnd_w:
+            return
 
-            # Delete current pixel objects from canvas
-            for row in range(shape[0]):
-                for col in range(shape[1]):
-                    self.canvas.delete(self.pixels[row][col])
-            del self.pixels
+        new_data = np.zeros((self.wnd_h, self.wnd_w, 3), dtype=np.uint8)
+        new_data.fill(255)
 
-        # Create new pixels
-        self.pixels = np.zeros((self.wnd_h, self.wnd_w), dtype=int)
-        for row in range(self.wnd_h):
-            for col in range(self.wnd_w):
-                self.pixels[row][col] = self.canvas.create_rectangle(row, row + 1, col, col + 1,
-                                                                     fill='#000000', width=1)
-                print(row, col)
+        if self.wnd_w > shape[1]:
+            src_st_x = 0
+            dst_st_x = self.wnd_w // 2 - shape[1] // 2
+            copy_width = shape[1]
+        else:
+            src_st_x = shape[1] // 2 - self.wnd_w // 2
+            dst_st_x = 0
+            copy_width = self.wnd_w
+
+        if self.wnd_h > shape[0]:
+            src_st_y = 0
+            dst_st_y = self.wnd_h // 2 - shape[0] // 2
+            copy_height = shape[0]
+        else:
+            src_st_y = shape[0] // 2 - self.wnd_h // 2
+            dst_st_y = 0
+            copy_height = self.wnd_h
+
+        new_data[dst_st_y:dst_st_y+copy_height, dst_st_x:dst_st_x+copy_width] \
+            = self.data[src_st_y:src_st_y+copy_height, src_st_x:src_st_x+copy_width]
+
+        pos_dx = self.wnd_w // 2 - shape[1] // 2
+        pos_dy = self.wnd_h // 2 - shape[0] // 2
+        self.canvas.move(self.data_img_id, pos_dx, pos_dy)
+        self.data = new_data
+
+    def __init_data_image(self):
+        self.__clear_data()
+        self.data_img_obj = ImageTk.PhotoImage(image=Image.fromarray(self.data))
+        self.data_img_id = self.canvas.create_image(self.wnd_w // 2, self.wnd_h // 2,
+                                                    image=self.data_img_obj, anchor=tk.CENTER)
 
     def __canvas_bind_funcs(self):
         self.canvas.bind('<MouseWheel>', self.__mouse_scroll)
@@ -163,7 +192,7 @@ class Viewer:
             if self.mpp <= setting[0]:
                 self.axis_conf['grid']['decimal'] = setting[1]
 
-        self.redraw_canvas()
+        self.__clear_data()
 
     def __left_mouse_down(self, event):
         self.drag_prev_pos = [event.x, event.y]
@@ -174,21 +203,48 @@ class Viewer:
 
         self.wnd_cntr_pos[0] -= dx * self.mpp
         self.wnd_cntr_pos[1] += dy * self.mpp
-
         self.drag_prev_pos = [event.x, event.y]
-        self.redraw_canvas()
+
+        src_st_x = 0 if dx > 0 else -dx
+        dst_st_x = dx if dx > 0 else 0
+        copy_width = self.wnd_w - abs(dx)
+
+        src_st_y = 0 if dy > 0 else -dy
+        dst_st_y = dy if dy > 0 else 0
+        copy_height = self.wnd_h - abs(dy)
+
+        reset_region = [
+            # Horizontal
+            {
+                'st_x': dx if dx > 0 else 0,
+                'st_y': 0 if dy > 0 else self.wnd_h + dy,
+                'width': copy_width,
+                'height': abs(dy)
+            },
+            # Vertical
+            {
+                'st_x': 0 if dx > 0 else self.wnd_w + dx,
+                'st_y': dy if dy > 0 else 0,
+                'width': abs(dx),
+                'height': copy_height
+            },
+            # Intersection
+            {
+                'st_x': 0 if dx > 0 else self.wnd_w + dx,
+                'st_y': 0 if dy > 0 else self.wnd_h + dy,
+                'width': abs(dx),
+                'height': abs(dy)
+            }
+        ]
+
+        self.data[dst_st_y:dst_st_y+copy_height, dst_st_x:dst_st_x+copy_width] \
+            = self.data[src_st_y:src_st_y+copy_height, src_st_x:src_st_x+copy_width]
+
+        for rect in reset_region:
+            self.data[rect['st_y']:rect['st_y']+rect['height'], rect['st_x']:rect['st_x']+rect['width'], :] = 255
 
     def __left_mouse_up(self, event):
         self.drag_prev_pos = [None, None]
-        self.redraw_canvas()
-
-    def redraw_canvas(self):
-        curr_time = time.time() * 1000  # in ms
-        if curr_time - self.last_redraw_time < self.refresh_rate:
-            return
-
-        self.last_redraw_time = curr_time
-        self.draw_mgr.draw_all()
 
     # Draw axes
     # ==================================================================================================================
@@ -370,28 +426,38 @@ class Viewer:
 
     # ==================================================================================================================
     def draw_loop(self):
+        old_obj = self.canvas.find_all()
+
         q: List[DrawRect] = self.draw_mgr.draw_queue
 
-        # Check is there any new data to draw
-        if len(q) == 0:
-            self.root.after(self.refresh_rate, self.draw_loop)
-            return
+        # Fill pixel data
+        idx = 0
+        while idx < len(q):
+            r = q[idx]
 
-        # Draw data in queue and axis(and grid)
-        while len(q) != 0:
-            r = q.pop(0)
-            break
-            target_pixels = self.pixels[r.scr_rect[0]:r.scr_rect[1], r.scr_rect[2]:r.scr_rect[3]]
-            target_shape = target_pixels.shape
-            for row in range(target_shape[1]):
-                for col in range(target_shape[0]):
-                    self.canvas.itemconfigure(target_pixels[row][col], fill=r.color)
+            x1 = r.scr_rect[0]
+            y1 = r.scr_rect[1]
+            x2 = r.scr_rect[2]
+            y2 = r.scr_rect[3]
+            self.data[y1:y2 + 1, x1:x2 + 1] = r.color
+
+            idx += 1
+        del q[:idx]
+            
+        self.data_img_obj = ImageTk.PhotoImage(image=Image.fromarray(self.data))
+        self.canvas.itemconfig(self.data_img_id, image=self.data_img_obj)
 
         grid_size = self.axis_conf['grid']['size']
         self.draw_axes(grid_size)
 
+        for obj_id in old_obj:
+            if obj_id == self.data_img_id:
+                continue
+
+            self.canvas.delete(obj_id)
+
         # Run timer
-        self.root.after(self.refresh_rate, self.draw_loop)
+        self.root.after(self.max_refresh_rate, self.draw_loop)
 
     def get_pixel_boundary(self):
         return 0, 0, self.wnd_w, self.wnd_h
@@ -403,5 +469,5 @@ class Viewer:
         return left, top, right, bottom
 
     def run_gui(self):
-        # self.root.after(0, self.draw_loop)
+        self.root.after(0, self.draw_loop)
         self.root.mainloop()

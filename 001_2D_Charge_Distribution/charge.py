@@ -17,17 +17,22 @@ class LineChargeDist:
         self.density = density
 
     def set_points(self, x1, y1, x2, y2):
-        self.p1 = [x1, y1]
-        self.p2 = [x2, y2]
-        self.cntr = [(x1 + x2) / 2, (y1 + y2) / 2]
+        self.p1 = np.array([x1, y1])
+        self.p2 = np.array([x2, y2])
+        self.cntr = (self.p1 + self.p2) / 2
 
-        self.norm = np.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
-        self.u_vec = [(x2 - x1) / self.norm, (y2 - y1) / self.norm]
+        r_sub = self.p2 - self.p1
+        self.norm = np.sqrt(np.dot(r_sub, r_sub))
+        self.u_vec = r_sub / self.norm
 
     def get_electric_potential(self, x, y):
-        r = [x - self.cntr[0], y - self.cntr[1]]
-        local_x = self.u_vec[0] * r[0] + self.u_vec[1] * r[1]  # dot product
-        local_y = -self.u_vec[1] * r[0] + self.u_vec[0] * r[1]
+        target = np.array([x, y])
+
+        v_local_r = target - self.cntr
+        local_x = np.dot(self.u_vec, v_local_r)
+        v_local_x = self.u_vec * local_x
+        v_local_y = v_local_r - v_local_x
+        local_y = np.sqrt(np.dot(v_local_y, v_local_y))
 
         a = self.norm / 2
         buf1 = np.sqrt((local_x - a) ** 2 + local_y ** 2) - local_x + a
