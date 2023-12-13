@@ -34,9 +34,14 @@ class LineChargeDist:
         v_local_y = v_local_r - v_local_x
         local_y = np.sqrt(np.dot(v_local_y, v_local_y))
 
+        return np.sqrt(local_x ** 2 + local_y ** 2)
+
         a = self.norm / 2
         buf1 = np.sqrt((local_x - a) ** 2 + local_y ** 2) - local_x + a
         buf2 = np.sqrt((local_x + a) ** 2 + local_y ** 2) - local_x - a
+
+        if buf2 == 0:
+            print()
 
         res = self.density / (4 * pi * eps) * np.log(buf1 / buf2)
 

@@ -11,15 +11,8 @@ def run():
     exit_flag = [False]
 
     draw_mgr = DrawManager()
+
     calc_mgr = CalcManager(draw_mgr, exit_flag)
-
-    '''
-    sz = 1
-    for i in range(10, 700, sz):
-        for j in range(10, 900, sz):
-            draw_mgr.add_rect(DrawRect((i, j, i + sz - 1, j + sz - 1), random.randint(-10, 10), 20))
-    '''
-
     calc_th = threading.Thread(target=calc_mgr.run)
     calc_th.start()
 

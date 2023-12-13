@@ -17,19 +17,24 @@ class DrawRect:
         self.set_value(value, max_abs)
 
     def set_value(self, value, max_abs):
-        self.value = value
+        clipped_value = 0
+        try:
+            self.value = value
 
-        clipped_value = np.clip(value, -max_abs, max_abs)
-        if clipped_value > 0:
-            buf = 255 - int(255 * clipped_value / max_abs)
-            self.color[0] = 255
-            self.color[1] = buf
-            self.color[2] = buf
-        else:
-            buf = 255 - int(255 * -clipped_value / max_abs)
-            self.color[0] = buf
-            self.color[1] = buf
-            self.color[2] = 255
+            clipped_value = np.clip(value, -max_abs, max_abs)
+            if clipped_value > 0:
+                buf = 255 - int(255 * clipped_value / max_abs)
+                self.color[0] = 255
+                self.color[1] = buf
+                self.color[2] = buf
+            else:
+                buf = 255 - int(255 * -clipped_value / max_abs)
+                self.color[0] = buf
+                self.color[1] = buf
+                self.color[2] = 255
+        except Exception as e:
+            print(clipped_value, max_abs, self.scr_rect)
+            exit(0)
 
 
 class DrawManager:
@@ -37,21 +42,21 @@ class DrawManager:
         self.data: List[DrawRect] = []
         self.draw_queue: List[DrawRect] = []
 
-    def add_rect(self, rect: DrawRect):
+    def add_data(self, rect: DrawRect):
         self.data.append(rect)
-        self.draw(rect)
 
     def change_max_abs(self, max_abs):
         for rect in self.data:
             rect.set_value(rect.value, max_abs)
-            self.draw(rect)
+
+        self.draw_all()
 
     def draw(self, rect: DrawRect):
         self.draw_queue.append(rect)
 
     def draw_all(self):
+        self.draw_queue.clear()
         self.draw_queue += self.data
 
-    def clear_data(self):
-        del self.data
-        self.data = []
+    def remove_data(self, rect: DrawRect):
+        self.data.remove(rect)

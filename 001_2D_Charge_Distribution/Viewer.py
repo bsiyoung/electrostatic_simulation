@@ -38,9 +38,7 @@ class Viewer:
 
         self.__init_default_configs()
 
-        px1, py1 = self.screen_pos_to_physical_pos(100, 100)
-        px2, py2 = self.screen_pos_to_physical_pos(800, 700)
-        self.calc_mgr.calc_queue.append(CalcJob((100, 100, 800, 700), (px1, py1, px2, py2), 0))
+        self.__request_update(0, 0, width - 1, height - 1)
 
     def __init_default_configs(self):
         self.wnd_cntr_pos = [0, 0]  # physical position of window center
@@ -50,7 +48,7 @@ class Viewer:
         self.drag_prev_pos = [None, None]
         self.zoom_speed = 1.2  # scroll speed
 
-        self.max_refresh_rate = 10  # ms
+        self.max_refresh_rate = int(1000 / 60)  # ms
 
         self.axis_conf = {
             'main': {
@@ -79,6 +77,16 @@ class Viewer:
                 'text_margin': 5
             }
         }
+
+    def __request_update(self, x1, y1, x2, y2):
+        px1, py1 = self.screen_pos_to_physical_pos(x1, y1)
+        px2, py2 = self.screen_pos_to_physical_pos(x2, y2)
+        self.calc_mgr.calc_queue.append((
+            (
+                CalcJob((x1, y1, x2, y2), (px1, py1, px2, py2),0),
+            ),
+            None
+        ))
 
     def __clear_data(self):
         self.data.fill(255)
@@ -147,8 +155,8 @@ class Viewer:
             dst_st_y = 0
             copy_height = self.wnd_h
 
-        new_data[dst_st_y:dst_st_y+copy_height, dst_st_x:dst_st_x+copy_width] \
-            = self.data[src_st_y:src_st_y+copy_height, src_st_x:src_st_x+copy_width]
+        new_data[dst_st_y:dst_st_y + copy_height, dst_st_x:dst_st_x + copy_width] \
+            = self.data[src_st_y:src_st_y + copy_height, src_st_x:src_st_x + copy_width]
 
         pos_dx = self.wnd_w // 2 - shape[1] // 2
         pos_dy = self.wnd_h // 2 - shape[0] // 2
@@ -158,8 +166,7 @@ class Viewer:
     def __init_data_image(self):
         self.__clear_data()
         self.data_img_obj = ImageTk.PhotoImage(image=Image.fromarray(self.data))
-        self.data_img_id = self.canvas.create_image(self.wnd_w // 2, self.wnd_h // 2,
-                                                    image=self.data_img_obj, anchor=tk.CENTER)
+        self.data_img_id = self.canvas.create_image(0, 0, image=self.data_img_obj, anchor=tk.NW)
 
     def __canvas_bind_funcs(self):
         self.canvas.bind('<MouseWheel>', self.__mouse_scroll)
@@ -237,11 +244,11 @@ class Viewer:
             }
         ]
 
-        self.data[dst_st_y:dst_st_y+copy_height, dst_st_x:dst_st_x+copy_width] \
-            = self.data[src_st_y:src_st_y+copy_height, src_st_x:src_st_x+copy_width]
+        self.data[dst_st_y:dst_st_y + copy_height, dst_st_x:dst_st_x + copy_width] \
+            = self.data[src_st_y:src_st_y + copy_height, src_st_x:src_st_x + copy_width]
 
         for rect in reset_region:
-            self.data[rect['st_y']:rect['st_y']+rect['height'], rect['st_x']:rect['st_x']+rect['width'], :] = 255
+            self.data[rect['st_y']:rect['st_y'] + rect['height'], rect['st_x']:rect['st_x'] + rect['width'], :] = 255
 
     def __left_mouse_up(self, event):
         self.drag_prev_pos = [None, None]
@@ -274,12 +281,12 @@ class Viewer:
         axis_conf = self.axis_conf['main']
         if is_x_axis_visible:
             # Draw x-axis
-            self.canvas.create_line(0, x_axis_pos, self.wnd_w, x_axis_pos,
+            self.canvas.create_line(0, x_axis_pos, self.wnd_w - 1, x_axis_pos,
                                     fill=axis_conf['color'], width=axis_conf['width'])
 
         if is_y_axis_visible:
             # Draw y-axis
-            self.canvas.create_line(y_axis_pos, 0, y_axis_pos, self.wnd_h,
+            self.canvas.create_line(y_axis_pos, 0, y_axis_pos, self.wnd_h - 1,
                                     fill=axis_conf['color'], width=axis_conf['width'])
 
     def __draw_grids(self, sz_grid, x_axis_pos, y_axis_pos):
@@ -299,7 +306,7 @@ class Viewer:
     def __get_grid_boundaries(self, sz_grid_phy):
         # Get physical position of edge of window
         wnd_left_phy_x, wnd_top_phy_y = self.screen_pos_to_physical_pos(0, 0)
-        wnd_right_phy_x, wnd_bot_phy_y = self.screen_pos_to_physical_pos(self.wnd_w, self.wnd_h)
+        wnd_right_phy_x, wnd_bot_phy_y = self.screen_pos_to_physical_pos(self.wnd_w - 1, self.wnd_h - 1)
 
         # Get start and end locations of grid
         st_phy_x = wnd_left_phy_x - wnd_left_phy_x % sz_grid_phy
@@ -426,45 +433,51 @@ class Viewer:
 
     # ==================================================================================================================
     def draw_loop(self):
-        old_obj = self.canvas.find_all()
+        self.__update_data()
+        self.__update_viewport()
 
-        q: List[DrawRect] = self.draw_mgr.draw_queue
+        self.root.after(self.max_refresh_rate, self.draw_loop)
+
+    def __update_data(self):
+        draw_queue: List[DrawRect] = self.draw_mgr.draw_queue
 
         # Fill pixel data
         idx = 0
-        while idx < len(q):
-            r = q[idx]
+        while idx < len(draw_queue):
+            r = draw_queue[idx]
 
-            x1 = r.scr_rect[0]
-            y1 = r.scr_rect[1]
-            x2 = r.scr_rect[2]
-            y2 = r.scr_rect[3]
+            x1, y1 = r.scr_rect[0], r.scr_rect[1]
+            x2, y2 = r.scr_rect[2], r.scr_rect[3]
             self.data[y1:y2 + 1, x1:x2 + 1] = r.color
 
             idx += 1
-        del q[:idx]
-            
+
+        # Delete already processed queue
+        del draw_queue[:idx]
+
+    def __update_viewport(self):
         self.data_img_obj = ImageTk.PhotoImage(image=Image.fromarray(self.data))
         self.canvas.itemconfig(self.data_img_id, image=self.data_img_obj)
 
+        self.__update_axis()
+
+    def __update_axis(self):
+        old_axis_obj = list(self.canvas.find_all())
+        old_axis_obj.remove(self.data_img_id)
         grid_size = self.axis_conf['grid']['size']
         self.draw_axes(grid_size)
+        self.__remove_objects(old_axis_obj)
 
-        for obj_id in old_obj:
-            if obj_id == self.data_img_id:
-                continue
-
+    def __remove_objects(self, obj_id_list):
+        for obj_id in obj_id_list:
             self.canvas.delete(obj_id)
 
-        # Run timer
-        self.root.after(self.max_refresh_rate, self.draw_loop)
-
     def get_pixel_boundary(self):
-        return 0, 0, self.wnd_w, self.wnd_h
+        return 0, 0, self.wnd_w - 1, self.wnd_h - 1
 
     def get_physical_boundary(self):
         left, top = self.screen_pos_to_physical_pos(0, 0)
-        right, bottom = self.screen_pos_to_physical_pos(self.wnd_w, self.wnd_h)
+        right, bottom = self.screen_pos_to_physical_pos(self.wnd_w - 1, self.wnd_h - 1)
 
         return left, top, right, bottom
 
