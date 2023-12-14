@@ -79,6 +79,13 @@ class Viewer:
         }
 
     def __request_update(self, x1, y1, x2, y2):
+        self.calc_mgr.calc_queue.clear()
+        self.calc_mgr.max_abs = 1e-100
+
+        self.draw_mgr.lock.acquire()
+        self.draw_mgr.draw_queue.clear()
+        self.draw_mgr.lock.release()
+
         px1, py1 = self.screen_pos_to_physical_pos(x1, y1)
         px2, py2 = self.screen_pos_to_physical_pos(x2, y2)
         self.calc_mgr.calc_queue.append((
@@ -200,6 +207,7 @@ class Viewer:
                 self.axis_conf['grid']['decimal'] = setting[1]
 
         self.__clear_data()
+        self.__request_update(0, 0, self.wnd_w - 1, self.wnd_h - 1)
 
     def __left_mouse_down(self, event):
         self.drag_prev_pos = [event.x, event.y]
@@ -439,6 +447,7 @@ class Viewer:
         self.root.after(self.max_refresh_rate, self.draw_loop)
 
     def __update_data(self):
+        self.draw_mgr.lock.acquire()
         draw_queue: List[DrawRect] = self.draw_mgr.draw_queue
 
         # Fill pixel data
@@ -454,6 +463,7 @@ class Viewer:
 
         # Delete already processed queue
         del draw_queue[:idx]
+        self.draw_mgr.lock.release()
 
     def __update_viewport(self):
         self.data_img_obj = ImageTk.PhotoImage(image=Image.fromarray(self.data))

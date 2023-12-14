@@ -6,7 +6,7 @@ from typing import List, Tuple
 
 import numpy as np
 from DrawManager import DrawRect
-from charge import LineChargeDist
+from Charge import LineChargeDist
 
 if TYPE_CHECKING:
     from DrawManager import DrawManager, DrawRect
@@ -48,34 +48,25 @@ class CalcJob:
         for charge in charges:
             res += charge.get_electric_potential(self.t_phy_x, self.t_phy_y)
 
+        phy_border = (self.phy_rect[0] + self.mpp * (self.t_scr_x - self.scr_rect[0]),
+                      self.phy_rect[1] - self.mpp * (self.t_scr_y - self.scr_rect[1]))
+
         sub_rect = (
             (  # Left Top
                 (self.scr_rect[0], self.scr_rect[1], self.t_scr_x, self.t_scr_y),
-                (self.phy_rect[0],
-                 self.phy_rect[1],
-                 self.phy_rect[0] + self.mpp * (self.t_scr_x - self.scr_rect[0]),
-                 self.phy_rect[1] - self.mpp * (self.t_scr_y - self.scr_rect[1]))
+                (self.phy_rect[0], self.phy_rect[1], phy_border[0], phy_border[1])
             ),
             (  # Right Top
                 (self.t_scr_x + 1, self.scr_rect[1], self.scr_rect[2], self.t_scr_y),
-                (self.phy_rect[0] + self.mpp * (self.t_scr_x - self.scr_rect[0] + 1),
-                 self.phy_rect[1],
-                 self.phy_rect[2],
-                 self.phy_rect[1] - self.mpp * (self.t_scr_y - self.scr_rect[1]))
+                (phy_border[0] + self.mpp, self.phy_rect[1], self.phy_rect[2], phy_border[1])
             ) if self.scr_rect[0] != self.scr_rect[2] else None,
             (  # Left Bottom
                 (self.scr_rect[0], self.t_scr_y + 1, self.t_scr_x, self.scr_rect[3]),
-                (self.phy_rect[0],
-                 self.phy_rect[1] - self.mpp * (self.t_scr_y - self.scr_rect[1] + 1),
-                 self.phy_rect[0] + self.mpp * (self.t_scr_x - self.scr_rect[0]),
-                 self.phy_rect[3])
+                (self.phy_rect[0], phy_border[1] - self.mpp, phy_border[0], self.phy_rect[3])
             ) if self.scr_rect[1] != self.scr_rect[3] else None,
             (  # Right Bottom
                 (self.t_scr_x + 1, self.t_scr_y + 1, self.scr_rect[2], self.scr_rect[3]),
-                (self.phy_rect[0] + self.mpp * (self.t_scr_x - self.scr_rect[0] + 1),
-                 self.phy_rect[1] - self.mpp * (self.t_scr_y - self.scr_rect[1] + 1),
-                 self.phy_rect[2],
-                 self.phy_rect[3])
+                (phy_border[0] + self.mpp, phy_border[1] - self.mpp, self.phy_rect[2], self.phy_rect[3])
             ) if (self.scr_rect[1] != self.scr_rect[3]) and (self.scr_rect[0] != self.scr_rect[2]) else None
         ) if (self.scr_rect[0] != self.scr_rect[2] or self.scr_rect[1] != self.scr_rect[3]) else None
 
@@ -87,10 +78,11 @@ class CalcManager:
         self.draw_mgr: DrawManager = draw_mgr
         self.exit_flag = exit_flag
 
-        self.charges: List[LineChargeDist] = [LineChargeDist(-0.1, 0.05, 0.1, 0.05, 1),
-                                              LineChargeDist(-0.1, -0.05, 0.1, -0.05, -1),
-                                              LineChargeDist(-0.15, 0.2, -0.15, -0.2, 1)]
+        self.charges: List[LineChargeDist] = []
         self.calc_queue: List[Tuple[Tuple, DrawRect | None]] = []
+
+        self.max_abs = 1e-100
+        self.idx_threshold = 1
 
     def add_charge(self, charge: LineChargeDist):
         self.charges.append(charge)
@@ -103,13 +95,17 @@ class CalcManager:
         return res
 
     def loop(self):
-        max_abs = 1e-100
         while self.exit_flag[0] is False:
-            time.sleep(0.0001)
+            time.sleep(0.001)
+            self.draw_mgr.lock.acquire()
 
             idx = 0
-            max_abs_buf = max_abs
-            while idx < len(self.calc_queue) and idx < 200:
+            max_abs_buf = self.max_abs
+            if (len(self.calc_queue) > 0 or len(self.draw_mgr.draw_queue) > 0) and self.idx_threshold > 11:
+                self.idx_threshold -= 2
+            elif self.idx_threshold <= 500:
+                self.idx_threshold += 1
+            while idx < len(self.calc_queue) and idx < int(self.idx_threshold * 0.8):
                 if self.exit_flag[0] is True:
                     break
 
@@ -120,7 +116,7 @@ class CalcManager:
                 for job in calc_job[0]:
                     potential, target_rect, sub_rect = job.do(self.charges)
 
-                    new_draw_data = DrawRect(target_rect, potential, max_abs)
+                    new_draw_data = DrawRect(target_rect, potential, self.max_abs)
                     self.draw_mgr.add_data(new_draw_data)
                     self.draw_mgr.draw(new_draw_data)
 
@@ -148,9 +144,11 @@ class CalcManager:
 
             del self.calc_queue[:idx]
 
-            if max_abs < max_abs_buf:
-                max_abs = max_abs_buf
-                self.draw_mgr.change_max_abs(max_abs)
+            if self.max_abs < max_abs_buf:
+                self.max_abs = max_abs_buf
+                self.draw_mgr.change_max_abs(self.max_abs)
+
+            self.draw_mgr.lock.release()
 
     def run(self):
         self.loop()

@@ -1,4 +1,6 @@
 from __future__ import annotations
+
+import threading
 from typing import TYPE_CHECKING
 from typing import List
 
@@ -17,30 +19,27 @@ class DrawRect:
         self.set_value(value, max_abs)
 
     def set_value(self, value, max_abs):
-        clipped_value = 0
-        try:
-            self.value = value
+        self.value = value
 
-            clipped_value = np.clip(value, -max_abs, max_abs)
-            if clipped_value > 0:
-                buf = 255 - int(255 * clipped_value / max_abs)
-                self.color[0] = 255
-                self.color[1] = buf
-                self.color[2] = buf
-            else:
-                buf = 255 - int(255 * -clipped_value / max_abs)
-                self.color[0] = buf
-                self.color[1] = buf
-                self.color[2] = 255
-        except Exception as e:
-            print(clipped_value, max_abs, self.scr_rect)
-            exit(0)
+        clipped_value = np.clip(value, -max_abs, max_abs)
+        if clipped_value > 0:
+            buf = 255 - int(255 * clipped_value / max_abs)
+            self.color[0] = 255
+            self.color[1] = buf
+            self.color[2] = buf
+        else:
+            buf = 255 - int(255 * -clipped_value / max_abs)
+            self.color[0] = buf
+            self.color[1] = buf
+            self.color[2] = 255
 
 
 class DrawManager:
     def __init__(self):
         self.data: List[DrawRect] = []
         self.draw_queue: List[DrawRect] = []
+
+        self.lock = threading.Lock()
 
     def add_data(self, rect: DrawRect):
         self.data.append(rect)
