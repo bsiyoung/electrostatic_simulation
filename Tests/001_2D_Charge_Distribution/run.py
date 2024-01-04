@@ -19,7 +19,7 @@ def run():
     charge_depth = 1e-1
     charge_list = [
         LineChargeDist(-0.1, 0.05, 0.1, 0.05,density=1e-9, depth=charge_depth),
-        # LineChargeDist(-0.1, -0.05, 0.1, -0.05,density=-1e-9, depth=charge_depth),
+        LineChargeDist(-0.1, -0.05, 0.1, -0.05,density=-1e-9, depth=charge_depth),
         # LineChargeDist(-0.2, 0.2, -0.2, -0.2,density=1e-9, depth=charge_depth),
         # LineChargeDist(0.2, 0.2, 0.2, -0.2, density=-1e-9, depth=charge_depth)
     ]
