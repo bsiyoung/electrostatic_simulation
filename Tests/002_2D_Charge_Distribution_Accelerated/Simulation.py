@@ -110,6 +110,7 @@ class Simulation:
 
         return {
             'data_shape': (n_data_row, n_data_col),
+            'image_size': (n_data_row * down_sampling, n_data_col * down_sampling),
             'adj_phy_rect': adj_phy_rect,
             'full_adj_phy_rect': full_adj_phy_rect
         }
