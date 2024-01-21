@@ -27,9 +27,9 @@ def run():
         ]
     }
 
-    print('Image Size : ', Simulation.get_adjusted_size(sim_conf['phy_rect'],
-                                                        sim_conf['down_sampling'],
-                                                        sim_conf['mpp'])['image_size'])
+    # print('Image Size : ', Simulation.get_adjusted_size(sim_conf['phy_rect'],
+    #                                                     sim_conf['down_sampling'],
+    #                                                     sim_conf['mpp'])['image_size'])
 
     progress_q = Queue()
     sim = Simulation(sim_conf)
