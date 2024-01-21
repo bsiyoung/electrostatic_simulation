@@ -112,6 +112,11 @@ class MyApp(QDialog):
         self.charges_list = QListWidget()
         self.charges_layout.addWidget(self.charges_list)
 
+        # progress bar
+        self.progress_bar = QProgressBar(self)
+        self.progress_bar.setValue(0)
+        self.progress_bar.setAlignment(Qt.AlignCenter)
+
         # buttons
         self.button_layout = QHBoxLayout()
         self.ok_btn = QPushButton('ok')
@@ -124,6 +129,7 @@ class MyApp(QDialog):
         self.main_layout.addRow('ref_point', self.ref_point_layout)
         self.main_layout.addRow('device', self.device_layout)
         self.main_layout.addRow('charges', self.charges_layout)
+        self.main_layout.addWidget(self.progress_bar)
         self.main_layout.addRow('', self.button_layout)
 
         self.setLayout(self.main_layout)
@@ -253,6 +259,26 @@ class MyApp(QDialog):
                                     f'{charge_values[5]})'))
             print(type(charge_values[0]))
         return charge_list
+
+    def start_sim_thread(self, sim_conf):
+        self.ok_btn.setEnabled(False)
+
+        self.thread = SimulationThread(sim_conf)
+        self.thread.finished.connect(self.show_complete_message)
+        self.thread.start()
+    def show_complete_message(self):
+        self.ok_btn.setEnabled(True)
+        QMessageBox.information(self,'Notice','이미지 생성완료.')
+
+class SimulationThread(QThread):
+    sim_finished = pyqtSignal()
+    def __init__(self, sim_conf):
+        super().__init__()
+        self.sim_conf = sim_conf
+    def run(self):
+        sim = Simulation
+        sim.run(self.sim_conf)
+        self.sim_finished.emit()
 class ColorDialog(QDialog):
     def __init__(self, communicate):
         super().__init__()
@@ -310,16 +336,6 @@ class ContourDialog(QDialog):
         self.communicate.contour_ok_signal.emit(self.scale_spinbox.value())
         super().accept()
 
-class ChargeDialog(QDialog):
-    def __init__(self):
-        super().__init__()
-        self.setWindowTitle('Set charge')
-        self.initUI()
-
-    def initUI(self):
-        self.layout = QVBoxLayout()
-
-        self.values = []
 
 def get_inputs(ex):
     sim_conf = {
@@ -333,13 +349,11 @@ def get_inputs(ex):
     }
     import pprint
     pprint.pprint(sim_conf, sort_dicts=False)
-    # sim = Simulation(sim_conf)
-    # sim.run()
-    return sim_conf
+    ex.start_sim_thread(sim_conf)
 
 class Communicate(QObject):
     color_ok_signal = pyqtSignal(list)
-    contour_ok_signal = pyqtSignal(int)
+    contour_ok_signal = pyqtSignal(float)
 
 def run():
     app = QApplication(sys.argv)
