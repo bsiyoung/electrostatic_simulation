@@ -276,8 +276,8 @@ class SimulationThread(QThread):
         super().__init__()
         self.sim_conf = sim_conf
     def run(self):
-        sim = Simulation
-        sim.run(self.sim_conf)
+        sim = Simulation(self.sim_conf)
+        sim.run()
         self.sim_finished.emit()
 class ColorDialog(QDialog):
     def __init__(self, communicate):
