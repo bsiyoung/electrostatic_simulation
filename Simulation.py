@@ -3,6 +3,7 @@ from typing import Tuple
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from queue import Queue
     from Charge import ChargeDist
 
 import numpy as np
@@ -114,9 +115,9 @@ class Simulation:
             'full_adj_phy_rect': full_adj_phy_rect
         }
 
-    def run(self) -> None:
+    def run(self, progress_q: Queue, verbose: bool = True) -> None:
         # Fill data array
-        self.calc.do()
+        self.calc.do(progress_q, verbose=verbose)
 
         # Pile up plots
         plot_module = {

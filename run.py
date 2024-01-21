@@ -1,3 +1,5 @@
+from queue import Queue
+
 from Simulation import Simulation
 from Charge import ChargeDist
 
@@ -25,12 +27,13 @@ def run():
         ]
     }
 
-    print('Image Size : ', Simulation.get_adjusted_size(sim_conf['phy_rect'],
-                                                        sim_conf['down_sampling'],
-                                                        sim_conf['mpp'])['image_size'])
+    # print('Image Size : ', Simulation.get_adjusted_size(sim_conf['phy_rect'],
+    #                                                     sim_conf['down_sampling'],
+    #                                                     sim_conf['mpp'])['image_size'])
 
+    progress_q = Queue()
     sim = Simulation(sim_conf)
-    sim.run()
+    sim.run(progress_q, verbose=True)
 
 
 if __name__ == '__main__':

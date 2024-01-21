@@ -1,8 +1,11 @@
 from __future__ import annotations
+
+import time
 from typing import Tuple, List
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from queue import Queue
     from Charge import ChargeDist
 
 import threading
@@ -26,7 +29,8 @@ class Calc:
         self.ref_point = ref_point
         self.device = device
 
-    def do_on_cpu(self) -> None:
+    def do_on_cpu(self, progress_q: Queue, verbose: bool = True) -> None:
+        st_tm = time.time()
         lock = threading.Lock()
 
         n_row, n_col = self.data.shape
@@ -41,10 +45,28 @@ class Calc:
             th_list.append(worker)
             worker.start()
 
+        while n_done_row[0] != n_row:
+            progress = n_done_row[0] / n_row * 100
+            progress_q.put({
+                'task': 'calc',
+                'progress': progress
+            })
+            time.sleep(0.3)
+
+            elapsed_tm = time.time() - st_tm
+            est_tm = 100 / progress * elapsed_tm if progress != 0 else np.NaN
+            if verbose is True:
+                print('\rcalc : {:.3f}% | {:.2f}s/{:.2f}s'.format(progress, elapsed_tm, est_tm), end='')
+
+        elapsed_tm = time.time() - st_tm
+        print('\rcalc done {:.2f}s'.format(elapsed_tm))
+
         for worker in th_list:
             worker.join()
 
-    def do_on_gpu(self) -> None:
+    def do_on_gpu(self, progress_q: Queue, verbose: bool = True) -> None:
+        st_tm = time.time()
+
         # Index
         # 0 ~ 3 : x1, y1, x2, y2
         # 4 ~ 7 : unit vec
@@ -63,6 +85,7 @@ class Calc:
             buf[11] = Charge.FORM_CONSTANT if charge.form == 'constant' else 1.0
             charge_info_arr[idx] = buf
 
+        n_data = self.data.shape[0] * self.data.shape[1]
         d_phy_rect = cuda.to_device(self.phy_rect)
         d_data = cuda.to_device(self.data)
         d_charge = cuda.to_device(charge_info_arr)
@@ -73,17 +96,42 @@ class Calc:
             self.data.shape[1] // n_thread_in_block[0] + 1,
             self.data.shape[0] // n_thread_in_block[1] + 1
         )
-        gpu_kernel[n_block_in_grid, n_thread_in_block](d_phy_rect, d_data, d_charge, d_cnt)
-        cuda.synchronize()
+
+        kernel_s = cuda.stream()
+        progress_s = cuda.stream()
+
+        gpu_kernel[n_block_in_grid, n_thread_in_block, kernel_s](d_phy_rect, d_data, d_charge, d_cnt)
+
+        h_cnt = [0]
+        while h_cnt[0] != n_data:
+            h_cnt[0] = d_cnt.copy_to_host(stream=progress_s)[0]
+            progress = h_cnt[0] / n_data * 100
+            progress_q.put({
+                'task': 'calc',
+                'progress': progress
+            })
+            time.sleep(0.3)
+
+            elapsed_tm = time.time() - st_tm
+            est_tm = 100 / progress * elapsed_tm if progress != 0 else np.NaN
+            if verbose is True:
+                print('\rcalc : {:.3f}% | {:.2f}s/{:.2f}s'.format(progress, elapsed_tm, est_tm), end='')
+
+        elapsed_tm = time.time() - st_tm
+        print('\rcalc done {:.2f}s'.format(elapsed_tm))
+
+        # kernel_s.synchronize()
 
         self.data[:] = d_data.copy_to_host()
 
+        del progress_s
+        del kernel_s
         del d_cnt
         del d_charge
         del d_data
         del d_phy_rect
 
-    def do(self) -> None:
+    def do(self, progress_q: Queue, verbose=True) -> None:
         self.data.fill(0.0)
 
         ref_potential = 0.0
@@ -92,9 +140,9 @@ class Calc:
         self.data -= ref_potential
 
         if self.device == 'cpu':
-            self.do_on_cpu()
+            self.do_on_cpu(progress_q, verbose=verbose)
         elif self.device == 'gpu':
-            self.do_on_gpu()
+            self.do_on_gpu(progress_q, verbose=verbose)
 
     def __get_potential(self, x: float, y: float) -> float:
         res = 0.0
@@ -128,12 +176,9 @@ class Calc:
 
             lock.acquire()
             n_done_row[0] += 1
-            if n_done_row[0] % 10 == 0 or n_done_row[0] == data.shape[0]:
-                print(n_done_row, data.shape[0])
             lock.release()
 
         lock.acquire()
-        print('thread {}'.format(th_idx))
         data[st_row:en_row + 1] += buf
         lock.release()
 
@@ -157,6 +202,6 @@ def gpu_kernel(phy_rect, data, charges, cnt):
 
     cuda.atomic.add(cnt, 0, 1)
 
-    n_data = data.shape[0] * data.shape[1]
-    if cnt[0] % 10000000 == 0 or cnt[0] == n_data:
-        print('(', round(cnt[0] / n_data * 100, 3), '%)')
+    # n_data = data.shape[0] * data.shape[1]
+    # if cnt[0] % 10000000 == 0 or cnt[0] == n_data:
+    #     print('(', round(cnt[0] / n_data * 100, 3), '%)')
