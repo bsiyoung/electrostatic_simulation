@@ -1,3 +1,5 @@
+from queue import Queue
+
 import PyQt5
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
@@ -5,6 +7,7 @@ from PyQt5.QtCore import *
 import sys, os
 from Simulation import Simulation
 from Charge import ChargeDist
+
 
 class MyApp(QDialog):
     def __init__(self, communicate):
@@ -263,7 +266,9 @@ class MyApp(QDialog):
     def start_sim_thread(self, sim_conf):
         self.ok_btn.setEnabled(False)
 
-        self.thread = SimulationThread(sim_conf)
+        progress_q = Queue()
+
+        self.thread = SimulationThread(sim_conf, progress_q)
         self.thread.finished.connect(self.show_complete_message)
         self.thread.start()
     def show_complete_message(self):
@@ -272,12 +277,13 @@ class MyApp(QDialog):
 
 class SimulationThread(QThread):
     sim_finished = pyqtSignal()
-    def __init__(self, sim_conf):
+    def __init__(self, sim_conf, progress_q):
         super().__init__()
         self.sim_conf = sim_conf
+        self.progress_q = progress_q
     def run(self):
         sim = Simulation(self.sim_conf)
-        sim.run()
+        sim.run(self.progress_q)
         self.sim_finished.emit()
 class ColorDialog(QDialog):
     def __init__(self, communicate):

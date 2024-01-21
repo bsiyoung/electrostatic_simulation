@@ -1,10 +1,17 @@
+import gui
+
+'''
 from queue import Queue
 
 from Simulation import Simulation
 from Charge import ChargeDist
+'''
 
 
 def run():
+    gui.run()
+
+    '''
     sim_conf = {
         'phy_rect': (-0.4, 0.4, 0.4, -0.4),
         'mpp': 0.5e-4,
@@ -34,6 +41,7 @@ def run():
     progress_q = Queue()
     sim = Simulation(sim_conf)
     sim.run(progress_q, verbose=True)
+    '''
 
 
 if __name__ == '__main__':
