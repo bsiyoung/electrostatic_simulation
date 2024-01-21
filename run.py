@@ -20,7 +20,7 @@ def run():
             }
         },
         'ref_point': None,
-        'device': 'gpu',
+        'device': 'cpu',
         'charges': [
             ChargeDist(-0.1, 0.05, 0.1, 0.05, density=1e-8, depth=0.4),
             ChargeDist(-0.1, -0.05, 0.1, -0.05, density=-1e-8, depth=0.4)

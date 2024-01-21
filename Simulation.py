@@ -116,7 +116,21 @@ class Simulation:
             'full_adj_phy_rect': full_adj_phy_rect
         }
 
-    def run(self, progress_q: Queue, verbose: bool = True) -> None:
+    def run(self, progress_q: Queue, out_path: str = 'result.png', verbose: bool = True) -> None:
+        """
+        Run the simulation and save result image at out_path
+
+        :param progress_q: queue for sending progress info to gui thread
+                           e.g. {'task': 'calc', 'progress': 25.1, 'el_tm': 1.03, 'est_tm': 11.7}
+                                task: current task (e.g. 'calc', 'potential_color', 'potential_contour')
+                                progress: percentage of progress (out of 100)
+                                el_tm: elapsed time,
+                                est_tm: estimated time to done
+        :param out_path: path of an output file
+        :param verbose: print running information
+        :return: None
+        """
+
         # Fill data array
         self.calc.do(progress_q, verbose=verbose)
 
@@ -133,4 +147,4 @@ class Simulation:
 
         # Save image
         res = Image.fromarray(self.img)
-        res.save('result.png')
+        res.save(out_path)

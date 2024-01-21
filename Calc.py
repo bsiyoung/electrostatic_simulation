@@ -29,6 +29,19 @@ class Calc:
         self.ref_point = ref_point
         self.device = device
 
+    def do(self, progress_q: Queue, verbose=True) -> None:
+        self.data.fill(0.0)
+
+        ref_potential = 0.0
+        if self.ref_point is not None:
+            ref_potential = self.__get_potential(self.ref_point[0], self.ref_point[1])
+        self.data -= ref_potential
+
+        if self.device == 'cpu':
+            self.do_on_cpu(progress_q, verbose=verbose)
+        elif self.device == 'gpu':
+            self.do_on_gpu(progress_q, verbose=verbose)
+
     def do_on_cpu(self, progress_q: Queue, verbose: bool = True) -> None:
         st_tm = time.time()
         lock = threading.Lock()
@@ -46,20 +59,24 @@ class Calc:
             worker.start()
 
         while n_done_row[0] != n_row:
-            progress = n_done_row[0] / n_row * 100
-            progress_q.put({
-                'task': 'calc',
-                'progress': progress
-            })
             time.sleep(0.3)
 
-            elapsed_tm = time.time() - st_tm
-            est_tm = 100 / progress * elapsed_tm if progress != 0 else np.NaN
-            if verbose is True:
-                print('\rcalc : {:.3f}% | {:.2f}s/{:.2f}s'.format(progress, elapsed_tm, est_tm), end='')
+            progress = n_done_row[0] / n_row * 100
+            el_tm = time.time() - st_tm
+            est_tm = 100 / progress * el_tm if progress != 0 else np.NaN
 
-        elapsed_tm = time.time() - st_tm
-        print('\rcalc done {:.2f}s'.format(elapsed_tm))
+            progress_q.put({
+                'task': 'calc',
+                'progress': progress,
+                'el_tm': el_tm,
+                'est_tm': est_tm
+            })
+
+            if verbose is True:
+                print('\rcalc : {:.3f}% | {:.2f}s/{:.2f}s'.format(progress, el_tm, est_tm), end='')
+
+        el_tm = time.time() - st_tm
+        print('\rcalc done {:.2f}s'.format(el_tm))
 
         for worker in th_list:
             worker.join()
@@ -104,21 +121,25 @@ class Calc:
 
         h_cnt = [0]
         while h_cnt[0] != n_data:
-            h_cnt[0] = d_cnt.copy_to_host(stream=progress_s)[0]
-            progress = h_cnt[0] / n_data * 100
-            progress_q.put({
-                'task': 'calc',
-                'progress': progress
-            })
             time.sleep(0.3)
 
-            elapsed_tm = time.time() - st_tm
-            est_tm = 100 / progress * elapsed_tm if progress != 0 else np.NaN
-            if verbose is True:
-                print('\rcalc : {:.3f}% | {:.2f}s/{:.2f}s'.format(progress, elapsed_tm, est_tm), end='')
+            h_cnt[0] = d_cnt.copy_to_host(stream=progress_s)[0]
 
-        elapsed_tm = time.time() - st_tm
-        print('\rcalc done {:.2f}s'.format(elapsed_tm))
+            progress = h_cnt[0] / n_data * 100
+            el_tm = time.time() - st_tm
+            est_tm = 100 / progress * el_tm if progress != 0 else np.NaN
+
+            progress_q.put({
+                'task': 'calc',
+                'progress': progress,
+                'el_tm': el_tm,
+                'est_tm': est_tm
+            })
+            if verbose is True:
+                print('\rcalc : {:.3f}% | {:.2f}s/{:.2f}s'.format(progress, el_tm, est_tm), end='')
+
+        el_tm = time.time() - st_tm
+        print('\rcalc done {:.2f}s'.format(el_tm))
 
         # kernel_s.synchronize()
 
@@ -130,19 +151,6 @@ class Calc:
         del d_charge
         del d_data
         del d_phy_rect
-
-    def do(self, progress_q: Queue, verbose=True) -> None:
-        self.data.fill(0.0)
-
-        ref_potential = 0.0
-        if self.ref_point is not None:
-            ref_potential = self.__get_potential(self.ref_point[0], self.ref_point[1])
-        self.data -= ref_potential
-
-        if self.device == 'cpu':
-            self.do_on_cpu(progress_q, verbose=verbose)
-        elif self.device == 'gpu':
-            self.do_on_gpu(progress_q, verbose=verbose)
 
     def __get_potential(self, x: float, y: float) -> float:
         res = 0.0
