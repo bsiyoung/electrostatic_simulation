@@ -14,8 +14,8 @@ class MyApp(QDialog):
         super().__init__()
         self.communicate = communicate
         self.sim_conf = {}
-        self.phy_rect = (-0.4, 0.4, 0.4, -0.4)
-        self.mpp = 1e-4
+        # self.phy_rect = (-0.4, 0.4, 0.4, -0.4)
+        # self.mpp = 1e-4
         self.down_sampling = 1
         self.plots = {}
         self.color = {}
@@ -260,20 +260,40 @@ class MyApp(QDialog):
                                     f'{charge_values[3]},'
                                     f'{charge_values[4]},'
                                     f'{charge_values[5]})'))
-            print(type(charge_values[0]))
+            # print(type(charge_values[0]))
         return charge_list
 
     def start_sim_thread(self, sim_conf):
         self.ok_btn.setEnabled(False)
 
-        progress_q = Queue()
+        self.progress_q = Queue()
 
-        self.thread = SimulationThread(sim_conf, progress_q)
+        self.thread = SimulationThread(sim_conf, self.progress_q)
         self.thread.finished.connect(self.show_complete_message)
+        self.thread.finished.connect(self.timer_stop)
         self.thread.start()
+
+        self.timer_start()
     def show_complete_message(self):
         self.ok_btn.setEnabled(True)
         QMessageBox.information(self,'Notice','이미지 생성완료.')
+    def timer_start(self):
+        self.timer = QTimer(self)
+        self.timer.timeout.connect(self.check_queue)
+        self.timer.start(100)  # Check every 100 milliseconds
+    def timer_stop(self):
+        self.timer.stop()
+
+    def check_queue(self):
+        while not self.progress_q.empty():
+            value = self.progress_q.get()
+            task = value['task']
+            progress = round(value['progress'], 2)
+            if value is not None:
+                self.progress_bar.setValue(int(progress))
+                self.progress_bar.setFormat(f'{task} : {progress}%')
+
+
 
 class SimulationThread(QThread):
     sim_finished = pyqtSignal()
