@@ -141,9 +141,9 @@ class Simulation:
         }
         for plot, conf in self.plots.items():
             if self.device == 'cpu':
-                plot_module[plot].cpu(self.img, self.data, conf)
+                plot_module[plot].cpu(self.img, self.data, conf, progress_q, verbose)
             elif self.device == 'gpu':
-                plot_module[plot].gpu(self.img, self.data, conf)
+                plot_module[plot].gpu(self.img, self.data, conf, progress_q, verbose)
 
         # Save image
         res = Image.fromarray(self.img)
