@@ -56,6 +56,9 @@ class MyApp(QDialog):
         # charges
         self.setup_charges()
 
+        # image title
+        self.setup_img_title()
+
         # progress bar
         self.setup_progressbar()
 
@@ -74,6 +77,7 @@ class MyApp(QDialog):
         self.main_layout.addRow('ref_point', self.ref_point_layout)
         self.main_layout.addRow('device', self.device_layout)
         self.main_layout.addRow('charges', self.charges_layout)
+        self.main_layout.addRow('title', self.title_layout)
         self.main_layout.addWidget(self.progress_bar)
         self.main_layout.addRow('', self.button_layout)
         self.setLayout(self.main_layout)
@@ -166,6 +170,12 @@ class MyApp(QDialog):
         self.p_y1.setRange(-100, 100)
         self.p_x2.setRange(-100, 100)
         self.p_y2.setRange(-100, 100)
+
+    def setup_img_title(self):
+        self.title_layout = QHBoxLayout()
+        self.title = QLineEdit()
+        self.title_layout.addWidget(self.title)
+
 
     # plots에서 오른쪽 버튼 누르면 이동하는 함수
     def move_right(self):
